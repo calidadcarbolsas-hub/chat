@@ -120,6 +120,7 @@ class WebhookController {
             let messageContent = '';
             const messageType = message.type;
             let interactiveId = null;
+            let mediaId = null;
 
             switch (message.type) {
                 case 'text':
@@ -141,6 +142,11 @@ class WebhookController {
                     messageContent = message.button.text;
                     break;
 
+                case 'image':
+                    mediaId = message.image.id;
+                    messageContent = message.image.caption || '';
+                    break;
+
                 default:
                     messageContent = '[Tipo de mensaje no soportado]';
             }
@@ -148,11 +154,12 @@ class WebhookController {
             console.log('💬 CONTENIDO:', messageContent);
             console.log('🔘 TIPO MENSAJE:', messageType);
             console.log('🆔 INTERACTIVE ID:', interactiveId);
+            console.log('🖼️  MEDIA ID:', mediaId);
             console.log('');
             console.log('🚀 Procesando mensaje con conversationService...');
 
             // Procesar el mensaje
-            await conversationService.handleMessage(from, messageContent, messageId, messageType, interactiveId);
+            await conversationService.handleMessage(from, messageContent, messageId, messageType, interactiveId, mediaId);
 
             console.log('✅ Mensaje procesado correctamente');
             console.log('===========================================');

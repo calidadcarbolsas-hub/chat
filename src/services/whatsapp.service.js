@@ -94,6 +94,34 @@ class WhatsAppService {
             console.error('Error marcando mensaje como leído:', error.response?.data || error.message);
         }
     }
+
+    /**
+     * Descarga un archivo multimedia de WhatsApp a partir de su media_id.
+     * Devuelve { buffer, mimeType }.
+     */
+    async downloadMedia(mediaId) {
+        const { API_VERSION, BASE_URL } = require('../config/whatsapp');
+
+        // 1. Obtener la URL de descarga del archivo
+        const infoRes = await axios.get(
+            `${BASE_URL}/${API_VERSION}/${mediaId}`,
+            { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` } }
+        );
+
+        const mediaUrl  = infoRes.data.url;
+        const mimeType  = infoRes.data.mime_type;
+
+        // 2. Descargar el archivo como buffer binario
+        const fileRes = await axios.get(mediaUrl, {
+            headers:      { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
+            responseType: 'arraybuffer'
+        });
+
+        return {
+            buffer:   Buffer.from(fileRes.data),
+            mimeType: mimeType
+        };
+    }
 }
 
 module.exports = new WhatsAppService();

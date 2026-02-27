@@ -65,7 +65,7 @@ _Ej: Impresión corrida, faltante en pedido, daño en máquina, plancha desactua
     6: {
         numero: 6,
         categoria: 'FECHA DE LA EVENTUALIDAD',
-        texto: '📅 ¿Cuándo ocurrió?\n\nEscribe la fecha en cualquiera de estos formatos:\n• *15/03/2024*\n• *15-03-2024*\n• *15032024*',
+        texto: '📅 ¿Cuándo ocurrió?\n\nEscribe la fecha así:\n• *15/03/2024*\n• *15-03-2024*',
         tipo: 'texto'
     },
     7: {
@@ -92,6 +92,20 @@ _Ej: Impresión corrida, faltante en pedido, daño en máquina, plancha desactua
         titulos: [
             'Sí',
             'No'
+        ],
+        opciones: [
+            'Sí',
+            'No'
+        ]
+    },
+    9: {
+        numero: 9,
+        categoria: 'EVIDENCIA FOTOGRÁFICA',
+        texto: '📷 ¿Deseas adjuntar una foto como evidencia de la NC?',
+        tipo: 'opciones',
+        titulos: [
+            '📷 Sí, adjuntar',
+            '⏭️ No, continuar'
         ],
         opciones: [
             'Sí',

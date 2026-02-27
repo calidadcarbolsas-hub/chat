@@ -1,5 +1,6 @@
 const { getPool } = require('../config/database');
 const whatsappService = require('./whatsapp.service');
+const driveService = require('./drive.service');
 const { PREGUNTAS, MENSAJES } = require('../utils/questions');
 
 class ConversationService {
@@ -65,7 +66,8 @@ class ConversationService {
         const camposPermitidos = [
             'area', 'area_otro', 'empresa_cliente', 'orden_produccion',
             'referencia', 'descripcion_nc', 'fecha_evento',
-            'nivel_impacto', 'accion_inmediata', 'descripcion_accion'
+            'nivel_impacto', 'accion_inmediata', 'descripcion_accion',
+            'evidencia_url'
         ];
 
         if (!camposPermitidos.includes(campo)) {
@@ -88,7 +90,7 @@ class ConversationService {
 
     // ==================== HANDLER PRINCIPAL ====================
 
-    async handleMessage(telefono, mensaje, messageId, messageType, interactiveId) {
+    async handleMessage(telefono, mensaje, messageId, messageType, interactiveId, mediaId = null) {
         console.log('');
         console.log('🤖 CONVERSATION SERVICE - handleMessage');
         console.log('   Telefono:', telefono);
@@ -96,6 +98,7 @@ class ConversationService {
         console.log('   MessageId:', messageId);
         console.log('   MessageType:', messageType);
         console.log('   InteractiveId:', interactiveId);
+        console.log('   MediaId:', mediaId);
 
         try {
             console.log('   📖 Marcando mensaje como leído...');
@@ -106,7 +109,7 @@ class ConversationService {
             console.log('   ✅ Usuario:', JSON.stringify(user));
 
             console.log('   🔄 Procesando estado...');
-            await this.processState(user, mensaje, telefono, messageType, interactiveId);
+            await this.processState(user, mensaje, telefono, messageType, interactiveId, mediaId);
 
         } catch (error) {
             console.log('');
@@ -127,13 +130,13 @@ class ConversationService {
 
     // ==================== MAQUINA DE ESTADOS ====================
 
-    async processState(user, mensaje, telefono, messageType, interactiveId) {
+    async processState(user, mensaje, telefono, messageType, interactiveId, mediaId = null) {
         const estado = user.estado_conversacion;
         console.log('   📍 Estado actual:', estado);
 
         // Estados de corrección
         if (estado.startsWith('corregir_')) {
-            await this.processCorreccion(user, mensaje, telefono, estado, messageType, interactiveId);
+            await this.processCorreccion(user, mensaje, telefono, estado, messageType, interactiveId, mediaId);
             return;
         }
 
@@ -150,6 +153,7 @@ class ConversationService {
             case 'pregunta_6':
             case 'pregunta_7':
             case 'pregunta_8':
+            case 'pregunta_9':
                 await this.processQuestion(user, mensaje, telefono, estado, messageType, interactiveId);
                 break;
 
@@ -159,6 +163,10 @@ class ConversationService {
 
             case 'pregunta_8_descripcion':
                 await this.processAccionDescripcion(user, mensaje, telefono);
+                break;
+
+            case 'esperando_imagen':
+                await this.processEsperandoImagen(user, telefono, messageType, mediaId, mensaje);
                 break;
 
             case 'revision':
@@ -287,7 +295,7 @@ class ConversationService {
             if (!fechaMysql) {
                 await whatsappService.sendTextMessage(
                     telefono,
-                    '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *15/03/2024*\n• *15-03-2024*\n• *15032024*\n\n📅 ¿Cuándo ocurrió?'
+                    '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *15/03/2024*\n• *15-03-2024*\n\n📅 ¿Cuándo ocurrió?'
                 );
                 return;
             }
@@ -345,15 +353,31 @@ class ConversationService {
             return;
         }
 
-        // Avanzar a siguiente pregunta o ir a revisión
+        // Caso especial: Pregunta 9 → foto o saltar
+        if (numeroP === 9) {
+            if (respuestaFinal === 'Sí') {
+                await this.updateUserState(user.id, 'esperando_imagen');
+                await whatsappService.sendTextMessage(
+                    telefono,
+                    '📷 Perfecto. Envía la foto ahora:'
+                );
+            } else {
+                await this.updateUserState(user.id, 'revision');
+                await this.delay(400);
+                await this.sendSummary(telefono, user.id);
+            }
+            return;
+        }
+
+        // Avanzar a siguiente pregunta; pregunta 8 lleva a pregunta 9 (foto)
         if (numeroP < 8) {
             await this.updateUserState(user.id, `pregunta_${numeroP + 1}`);
             await this.delay(400);
             await this.sendQuestion(telefono, numeroP + 1);
         } else {
-            await this.updateUserState(user.id, 'revision');
+            await this.updateUserState(user.id, 'pregunta_9');
             await this.delay(400);
-            await this.sendSummary(telefono, user.id);
+            await this.sendQuestion(telefono, 9);
         }
     }
 
@@ -370,7 +394,47 @@ class ConversationService {
         const reporte = await this.getReporteActivo(user.id);
         await this.updateReporte(reporte.id, 'descripcion_accion', mensaje);
 
+        await this.updateUserState(user.id, 'pregunta_9');
+        await this.delay(400);
+        await this.sendQuestion(telefono, 9);
+    }
+
+    async processEsperandoImagen(user, telefono, messageType, mediaId, mensaje = '') {
+        // Permite saltar con texto "saltar"
+        if (messageType === 'text' && mensaje.toLowerCase().trim() === 'saltar') {
+            await this.updateUserState(user.id, 'revision');
+            await this.delay(400);
+            await this.sendSummary(telefono, user.id);
+            return;
+        }
+
+        if (messageType !== 'image' || !mediaId) {
+            await whatsappService.sendTextMessage(
+                telefono,
+                '📷 Por favor envía una *imagen*. Si no tienes foto disponible, escribe *saltar*.'
+            );
+            return;
+        }
+
+        await whatsappService.sendTextMessage(telefono, '⏳ Subiendo la foto, un momento...');
+
+        const reporte = await this.getReporteActivo(user.id);
+
+        // Descargar la imagen desde WhatsApp
+        const { buffer, mimeType } = await whatsappService.downloadMedia(mediaId);
+
+        // Generar nombre único para el archivo en Drive
+        const ext      = mimeType.split('/')[1] || 'jpg';
+        const fileName = `NC_${reporte.id}_${Date.now()}.${ext}`;
+
+        // Subir a Google Drive y obtener URL pública
+        const driveUrl = await driveService.uploadImage(buffer, fileName, mimeType);
+
+        // Guardar URL en la BD
+        await this.updateReporte(reporte.id, 'evidencia_url', driveUrl);
+
         await this.updateUserState(user.id, 'revision');
+        await whatsappService.sendTextMessage(telefono, '✅ Foto guardada correctamente.');
         await this.delay(400);
         await this.sendSummary(telefono, user.id);
     }
@@ -397,6 +461,7 @@ class ConversationService {
         summary += `*6.* Fecha: ${this.formatDateForDisplay(reporte.fecha_evento) || 'No registrada'}\n`;
         summary += `*7.* Nivel de impacto: ${reporte.nivel_impacto || 'No registrado'}\n`;
         summary += `*8.* Acción inmediata: ${accion}\n`;
+        summary += `*9.* Evidencia: ${reporte.evidencia_url ? reporte.evidencia_url : 'Sin foto'}\n`;
 
         await whatsappService.sendTextMessage(telefono, summary);
         await this.delay(800);
@@ -431,7 +496,7 @@ class ConversationService {
 
     async sendCorrectionList(telefono) {
         const rows = [];
-        for (let i = 1; i <= 8; i++) {
+        for (let i = 1; i <= 9; i++) {
             const pregunta = PREGUNTAS[i];
             rows.push({
                 id: `corregir_${i}`,
@@ -466,7 +531,7 @@ class ConversationService {
         );
     }
 
-    async processCorreccion(user, mensaje, telefono, estado, messageType, interactiveId) {
+    async processCorreccion(user, mensaje, telefono, estado, messageType, interactiveId, mediaId = null) {
         const numeroP = parseInt(estado.replace('corregir_', ''));
         const pregunta = PREGUNTAS[numeroP];
 
@@ -486,7 +551,7 @@ class ConversationService {
             if (!fechaMysql) {
                 await whatsappService.sendTextMessage(
                     telefono,
-                    '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *15/03/2024*\n• *15-03-2024*\n• *15032024*\n\n📅 ¿Cuándo ocurrió?'
+                    '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *15/03/2024*\n• *15-03-2024*\n\n📅 ¿Cuándo ocurrió?'
                 );
                 return;
             }
@@ -514,6 +579,24 @@ class ConversationService {
         const campo = campoMap[numeroP];
         if (campo) {
             await this.updateReporte(reporte.id, campo, respuestaFinal);
+        }
+
+        // Caso especial: corrección de foto (pregunta 9)
+        if (numeroP === 9) {
+            if (respuestaFinal === 'Sí') {
+                await this.updateUserState(user.id, 'esperando_imagen');
+                await whatsappService.sendTextMessage(
+                    telefono,
+                    '📷 Envía la nueva foto de evidencia:'
+                );
+            } else {
+                // Borrar foto anterior
+                await this.updateReporte(reporte.id, 'evidencia_url', null);
+                await this.updateUserState(user.id, 'revision');
+                await this.delay(400);
+                await this.sendSummary(telefono, user.id);
+            }
+            return;
         }
 
         // Caso especial: corrección de área "Otro"
@@ -599,13 +682,24 @@ class ConversationService {
     }
 
     /**
-     * Convierte YYYY-MM-DD (MySQL) a DD/MM/AAAA para mostrar al usuario.
+     * Convierte la fecha de MySQL (DATE → objeto Date o string) a DD/MM/AAAA.
+     * mysql2 devuelve columnas DATE como objetos Date de JavaScript.
      */
     formatDateForDisplay(mysqlDate) {
         if (!mysqlDate) return null;
-        const str = String(mysqlDate).substring(0, 10); // "2024-03-15"
+
+        // mysql2 devuelve DATE como objeto Date → usar métodos UTC para evitar desfase de zona horaria
+        if (mysqlDate instanceof Date) {
+            const dia  = String(mysqlDate.getUTCDate()).padStart(2, '0');
+            const mes  = String(mysqlDate.getUTCMonth() + 1).padStart(2, '0');
+            const anio = mysqlDate.getUTCFullYear();
+            return `${dia}/${mes}/${anio}`;
+        }
+
+        // Si viene como string "YYYY-MM-DD"
+        const str = String(mysqlDate).substring(0, 10);
         const [anio, mes, dia] = str.split('-');
-        if (!anio || !mes || !dia) return mysqlDate;
+        if (!anio || !mes || !dia) return String(mysqlDate);
         return `${dia}/${mes}/${anio}`;
     }
 }
