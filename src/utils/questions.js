@@ -65,7 +65,7 @@ _Ej: Impresión corrida, faltante en pedido, daño en máquina, plancha desactua
     6: {
         numero: 6,
         categoria: 'FECHA DE LA EVENTUALIDAD',
-        texto: '📅 ¿Cuándo ocurrió?\n\n(Formato: DD/MM/AAAA)',
+        texto: '📅 ¿Cuándo ocurrió?\n\nEscribe la fecha en cualquiera de estos formatos:\n• *15/03/2024*\n• *15-03-2024*\n• *15032024*',
         tipo: 'texto'
     },
     7: {

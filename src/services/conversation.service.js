@@ -280,6 +280,26 @@ class ConversationService {
         }
 
         const respuestaFinal = this.resolveResponse(pregunta, mensaje, messageType, interactiveId);
+
+        // Validación especial para la fecha (pregunta 6)
+        if (numeroP === 6) {
+            const fechaMysql = this.parseDate(respuestaFinal);
+            if (!fechaMysql) {
+                await whatsappService.sendTextMessage(
+                    telefono,
+                    '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *15/03/2024*\n• *15-03-2024*\n• *15032024*\n\n📅 ¿Cuándo ocurrió?'
+                );
+                return;
+            }
+            const reporte = await this.getReporteActivo(user.id);
+            const reporteActivo = reporte || await this.getReporteActivo(user.id);
+            await this.updateReporte(reporteActivo.id, 'fecha_evento', fechaMysql);
+            await this.updateUserState(user.id, 'pregunta_7');
+            await this.delay(400);
+            await this.sendQuestion(telefono, 7);
+            return;
+        }
+
         const reporte = await this.getReporteActivo(user.id);
 
         if (!reporte) {
@@ -374,7 +394,7 @@ class ConversationService {
         summary += `*3.* Orden de producción: ${reporte.orden_produccion || 'No registrada'}\n`;
         summary += `*4.* Referencia: ${reporte.referencia || 'No registrada'}\n`;
         summary += `*5.* Descripción NC: ${reporte.descripcion_nc || 'No registrada'}\n`;
-        summary += `*6.* Fecha: ${reporte.fecha_evento || 'No registrada'}\n`;
+        summary += `*6.* Fecha: ${this.formatDateForDisplay(reporte.fecha_evento) || 'No registrada'}\n`;
         summary += `*7.* Nivel de impacto: ${reporte.nivel_impacto || 'No registrado'}\n`;
         summary += `*8.* Acción inmediata: ${accion}\n`;
 
@@ -459,6 +479,25 @@ class ConversationService {
         }
 
         const respuestaFinal = this.resolveResponse(pregunta, mensaje, messageType, interactiveId);
+
+        // Validación especial para la fecha (corrección pregunta 6)
+        if (numeroP === 6) {
+            const fechaMysql = this.parseDate(respuestaFinal);
+            if (!fechaMysql) {
+                await whatsappService.sendTextMessage(
+                    telefono,
+                    '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *15/03/2024*\n• *15-03-2024*\n• *15032024*\n\n📅 ¿Cuándo ocurrió?'
+                );
+                return;
+            }
+            const reporte = await this.getReporteActivo(user.id);
+            await this.updateReporte(reporte.id, 'fecha_evento', fechaMysql);
+            await this.updateUserState(user.id, 'revision');
+            await this.delay(400);
+            await this.sendSummary(telefono, user.id);
+            return;
+        }
+
         const reporte = await this.getReporteActivo(user.id);
 
         const campoMap = {
@@ -511,6 +550,63 @@ class ConversationService {
 
     delay(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
+     * Parsea una fecha escrita por el usuario y la convierte a YYYY-MM-DD para MySQL.
+     * Acepta: DD/MM/AAAA, D/M/AAAA, DD-MM-AAAA, DDMMAAAA
+     * Retorna null si el formato o la fecha no son válidos.
+     */
+    parseDate(input) {
+        const str = input.trim();
+        let dia, mes, anio;
+
+        // Con separador: DD/MM/AAAA, D/M/AAAA, DD-MM-AAAA, D-M-AAAA
+        const conSep = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (conSep) {
+            dia  = parseInt(conSep[1], 10);
+            mes  = parseInt(conSep[2], 10);
+            anio = parseInt(conSep[3], 10);
+        }
+
+        // Sin separador: DDMMAAAA (exactamente 8 dígitos)
+        if (!conSep) {
+            const sinSep = str.match(/^(\d{2})(\d{2})(\d{4})$/);
+            if (sinSep) {
+                dia  = parseInt(sinSep[1], 10);
+                mes  = parseInt(sinSep[2], 10);
+                anio = parseInt(sinSep[3], 10);
+            }
+        }
+
+        if (!dia || !mes || !anio) return null;
+
+        // Validar rangos básicos
+        if (mes < 1 || mes > 12)   return null;
+        if (dia < 1 || dia > 31)   return null;
+        if (anio < 2000 || anio > 2100) return null;
+
+        // Validar que la fecha realmente exista (ej: 30/02)
+        const fechaObj = new Date(anio, mes - 1, dia);
+        if (
+            fechaObj.getFullYear() !== anio ||
+            fechaObj.getMonth()    !== mes - 1 ||
+            fechaObj.getDate()     !== dia
+        ) return null;
+
+        // Formato MySQL: YYYY-MM-DD
+        return `${anio}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+    }
+
+    /**
+     * Convierte YYYY-MM-DD (MySQL) a DD/MM/AAAA para mostrar al usuario.
+     */
+    formatDateForDisplay(mysqlDate) {
+        if (!mysqlDate) return null;
+        const str = String(mysqlDate).substring(0, 10); // "2024-03-15"
+        const [anio, mes, dia] = str.split('-');
+        if (!anio || !mes || !dia) return mysqlDate;
+        return `${dia}/${mes}/${anio}`;
     }
 }
 
