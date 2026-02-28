@@ -1,26 +1,26 @@
 const { google } = require('googleapis');
 const { Readable } = require('stream');
-const { GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY, GOOGLE_OWNER_EMAIL } = require('../config/google');
+const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN } = require('../config/google');
 
 const FOLDER_NAME = 'Evidencias NC - CARBOLSAS';
 
 class DriveService {
 
     constructor() {
-        const auth = new google.auth.JWT({
-            email: GOOGLE_CLIENT_EMAIL,
-            key:   GOOGLE_PRIVATE_KEY,
-            // Scope completo para que la service account pueda crear
-            // y gestionar su propia carpeta sin depender de permisos externos
-            scopes: ['https://www.googleapis.com/auth/drive']
-        });
+        const auth = new google.auth.OAuth2(
+            GOOGLE_CLIENT_ID,
+            GOOGLE_CLIENT_SECRET,
+            'https://developers.google.com/oauthplayground'
+        );
+
+        auth.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN });
 
         this.drive    = google.drive({ version: 'v3', auth });
         this.folderId = null; // Cache para no buscar la carpeta en cada subida
     }
 
     /**
-     * Busca la carpeta "Evidencias NC - CARBOLSAS" en el Drive de la service account.
+     * Busca la carpeta "Evidencias NC - CARBOLSAS" en el Drive del usuario.
      * Si no existe la crea. Guarda el ID en cache.
      */
     async getOrCreateFolder() {
@@ -39,7 +39,7 @@ class DriveService {
             return this.folderId;
         }
 
-        // No existe → crearla
+        // No existe → crearla en el Drive del usuario
         const folderRes = await this.drive.files.create({
             requestBody: {
                 name:     FOLDER_NAME,
@@ -50,26 +50,11 @@ class DriveService {
 
         this.folderId = folderRes.data.id;
         console.log(`   📁 Carpeta Drive creada: ${FOLDER_NAME} (${this.folderId})`);
-
-        // Compartir la carpeta con el dueño real para que aparezca en su Drive
-        if (GOOGLE_OWNER_EMAIL) {
-            await this.drive.permissions.create({
-                fileId: this.folderId,
-                requestBody: {
-                    role:         'writer',
-                    type:         'user',
-                    emailAddress: GOOGLE_OWNER_EMAIL
-                },
-                sendNotificationEmail: false
-            });
-            console.log(`   🔗 Carpeta compartida con: ${GOOGLE_OWNER_EMAIL}`);
-        }
-
         return this.folderId;
     }
 
     /**
-     * Sube un buffer de imagen al Drive de la service account.
+     * Sube un buffer de imagen al Drive del usuario.
      * Devuelve la URL pública (webViewLink) del archivo creado.
      */
     async uploadImage(imageBuffer, fileName, mimeType) {
