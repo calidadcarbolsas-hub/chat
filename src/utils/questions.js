@@ -45,7 +45,7 @@ const PREGUNTAS = {
     3: {
         numero: 3,
         categoria: 'NO. ORDEN DE PRODUCCIÓN',
-        texto: '🔢 Ingresa el número de orden de producción:',
+        texto: '📦 Ingresa el número de orden de producción:',
         tipo: 'texto'
     },
     4: {

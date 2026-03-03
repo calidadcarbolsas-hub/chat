@@ -295,7 +295,7 @@ class ConversationService {
             if (!fechaMysql) {
                 await whatsappService.sendTextMessage(
                     telefono,
-                    '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *15/03/2024*\n• *15-03-2024*\n\n📅 ¿Cuándo ocurrió?'
+                    '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *1/01/2026*\n• *1-03-2026*\n\n📅 ¿Cuándo ocurrió?'
                 );
                 return;
             }
