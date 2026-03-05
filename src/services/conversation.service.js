@@ -598,11 +598,11 @@ class ConversationService {
 
         const sections = [
             {
-                title: 'Datos del reporte (1-5)',
+                title: 'Datos básicos',
                 rows: [1, 2, 3, 4, 5].map(buildRow)
             },
             {
-                title: 'Detalles del evento (6-10)',
+                title: 'Detalles del evento',
                 rows: [6, 7, 8, 9, 10].map(buildRow)
             }
         ];
