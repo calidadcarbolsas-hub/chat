@@ -65,8 +65,8 @@ class ConversationService {
         const pool = getPool();
         const camposPermitidos = [
             'area', 'area_otro', 'empresa_cliente', 'orden_produccion',
-            'referencia', 'descripcion_nc', 'fecha_evento',
-            'nivel_impacto', 'accion_inmediata', 'descripcion_accion',
+            'referencia', 'cantidad_nc', 'cantidad_total', 'descripcion_nc',
+            'fecha_evento', 'nivel_impacto', 'accion_inmediata', 'descripcion_accion',
             'evidencia_url'
         ];
 
@@ -134,6 +134,28 @@ class ConversationService {
         const estado = user.estado_conversacion;
         console.log('   📍 Estado actual:', estado);
 
+        // Sub-estados de cantidad (deben ir antes del check genérico de correccion)
+        if (estado === 'pregunta_5_cantidad_und' || estado === 'pregunta_5_cantidad_lam') {
+            await this.processCantidadNcCantidad(user, mensaje, telefono, estado, false);
+            return;
+        }
+        if (estado === 'pregunta_6_cantidad_und' || estado === 'pregunta_6_cantidad_lam') {
+            await this.processCantidadTotalCantidad(user, mensaje, telefono, estado, false);
+            return;
+        }
+        if (estado === 'corregir_5_cantidad_und' || estado === 'corregir_5_cantidad_lam') {
+            await this.processCantidadNcCantidad(user, mensaje, telefono, estado, true);
+            return;
+        }
+        if (estado === 'corregir_6_cantidad_und' || estado === 'corregir_6_cantidad_lam') {
+            await this.processCantidadTotalCantidad(user, mensaje, telefono, estado, true);
+            return;
+        }
+        if (estado === 'corregir_10_descripcion') {
+            await this.processAccionDescripcion(user, mensaje, telefono);
+            return;
+        }
+
         // Estados de corrección
         if (estado.startsWith('corregir_')) {
             await this.processCorreccion(user, mensaje, telefono, estado, messageType, interactiveId, mediaId);
@@ -154,6 +176,8 @@ class ConversationService {
             case 'pregunta_7':
             case 'pregunta_8':
             case 'pregunta_9':
+            case 'pregunta_10':
+            case 'pregunta_11':
                 await this.processQuestion(user, mensaje, telefono, estado, messageType, interactiveId);
                 break;
 
@@ -161,7 +185,7 @@ class ConversationService {
                 await this.processAreaOtro(user, mensaje, telefono);
                 break;
 
-            case 'pregunta_8_descripcion':
+            case 'pregunta_10_descripcion':
                 await this.processAccionDescripcion(user, mensaje, telefono);
                 break;
 
@@ -289,8 +313,8 @@ class ConversationService {
 
         const respuestaFinal = this.resolveResponse(pregunta, mensaje, messageType, interactiveId);
 
-        // Validación especial para la fecha (pregunta 6)
-        if (numeroP === 6) {
+        // Validación especial para la fecha (pregunta 8)
+        if (numeroP === 8) {
             const fechaMysql = this.parseDate(respuestaFinal);
             if (!fechaMysql) {
                 await whatsappService.sendTextMessage(
@@ -302,9 +326,9 @@ class ConversationService {
             const reporte = await this.getReporteActivo(user.id);
             const reporteActivo = reporte || await this.getReporteActivo(user.id);
             await this.updateReporte(reporteActivo.id, 'fecha_evento', fechaMysql);
-            await this.updateUserState(user.id, 'pregunta_7');
+            await this.updateUserState(user.id, 'pregunta_9');
             await this.delay(400);
-            await this.sendQuestion(telefono, 7);
+            await this.sendQuestion(telefono, 9);
             return;
         }
 
@@ -322,10 +346,11 @@ class ConversationService {
             2: 'empresa_cliente',
             3: 'orden_produccion',
             4: 'referencia',
-            5: 'descripcion_nc',
-            6: 'fecha_evento',
-            7: 'nivel_impacto',
-            8: 'accion_inmediata'
+            // 5 y 6 tienen sub-estado propio para cantidad
+            7: 'descripcion_nc',
+            8: 'fecha_evento',
+            9: 'nivel_impacto',
+            10: 'accion_inmediata'
         };
 
         const campo = campoMap[numeroP];
@@ -343,9 +368,33 @@ class ConversationService {
             return;
         }
 
-        // Caso especial: Pregunta 8 "Sí" → pedir descripción de acción
-        if (numeroP === 8 && respuestaFinal === 'Sí') {
-            await this.updateUserState(user.id, 'pregunta_8_descripcion');
+        // Caso especial: Pregunta 5 → selección de unidad para cantidad NC
+        if (numeroP === 5) {
+            const sufijo = respuestaFinal === 'Unidades' ? '_und' : '_lam';
+            await this.updateUserState(user.id, `pregunta_5_cantidad${sufijo}`);
+            const unidadTexto = respuestaFinal === 'Unidades' ? 'unidades' : 'láminas';
+            await whatsappService.sendTextMessage(
+                telefono,
+                `📦 Escribe la cantidad de No Conformes en ${unidadTexto}:\n\n_Ej: ${respuestaFinal === 'Unidades' ? '20' : '10'}_`
+            );
+            return;
+        }
+
+        // Caso especial: Pregunta 6 → selección de unidad para cantidad total
+        if (numeroP === 6) {
+            const sufijo = respuestaFinal === 'Unidades' ? '_und' : '_lam';
+            await this.updateUserState(user.id, `pregunta_6_cantidad${sufijo}`);
+            const unidadTexto = respuestaFinal === 'Unidades' ? 'unidades' : 'láminas';
+            await whatsappService.sendTextMessage(
+                telefono,
+                `📦 Escribe la cantidad total producida en ${unidadTexto}:\n\n_Ej: ${respuestaFinal === 'Unidades' ? '200' : '1000'}_`
+            );
+            return;
+        }
+
+        // Caso especial: Pregunta 10 "Sí" → pedir descripción de acción
+        if (numeroP === 10 && respuestaFinal === 'Sí') {
+            await this.updateUserState(user.id, 'pregunta_10_descripcion');
             await whatsappService.sendTextMessage(
                 telefono,
                 '📝 Describe brevemente la acción inmediata que se realizó:'
@@ -353,8 +402,8 @@ class ConversationService {
             return;
         }
 
-        // Caso especial: Pregunta 9 → foto o saltar
-        if (numeroP === 9) {
+        // Caso especial: Pregunta 11 → foto o saltar
+        if (numeroP === 11) {
             if (respuestaFinal === 'Sí') {
                 await this.updateUserState(user.id, 'esperando_imagen');
                 await whatsappService.sendTextMessage(
@@ -369,15 +418,15 @@ class ConversationService {
             return;
         }
 
-        // Avanzar a siguiente pregunta; pregunta 8 lleva a pregunta 9 (foto)
-        if (numeroP < 8) {
+        // Avanzar a siguiente pregunta
+        if (numeroP < 10) {
             await this.updateUserState(user.id, `pregunta_${numeroP + 1}`);
             await this.delay(400);
             await this.sendQuestion(telefono, numeroP + 1);
         } else {
-            await this.updateUserState(user.id, 'pregunta_9');
+            await this.updateUserState(user.id, 'pregunta_11');
             await this.delay(400);
-            await this.sendQuestion(telefono, 9);
+            await this.sendQuestion(telefono, 11);
         }
     }
 
@@ -394,9 +443,47 @@ class ConversationService {
         const reporte = await this.getReporteActivo(user.id);
         await this.updateReporte(reporte.id, 'descripcion_accion', mensaje);
 
-        await this.updateUserState(user.id, 'pregunta_9');
+        await this.updateUserState(user.id, 'pregunta_11');
         await this.delay(400);
-        await this.sendQuestion(telefono, 9);
+        await this.sendQuestion(telefono, 11);
+    }
+
+    async processCantidadNcCantidad(user, mensaje, telefono, estado, esCorreccion) {
+        const esUnidades = estado.includes('_und');
+        const unidad = esUnidades ? 'und' : 'láminas';
+        const valor = `${mensaje.trim()} ${unidad}`;
+
+        const reporte = await this.getReporteActivo(user.id);
+        await this.updateReporte(reporte.id, 'cantidad_nc', valor);
+
+        if (esCorreccion) {
+            await this.updateUserState(user.id, 'revision');
+            await this.delay(400);
+            await this.sendSummary(telefono, user.id);
+        } else {
+            await this.updateUserState(user.id, 'pregunta_6');
+            await this.delay(400);
+            await this.sendQuestion(telefono, 6);
+        }
+    }
+
+    async processCantidadTotalCantidad(user, mensaje, telefono, estado, esCorreccion) {
+        const esUnidades = estado.includes('_und');
+        const unidad = esUnidades ? 'und' : 'láminas';
+        const valor = `${mensaje.trim()} ${unidad}`;
+
+        const reporte = await this.getReporteActivo(user.id);
+        await this.updateReporte(reporte.id, 'cantidad_total', valor);
+
+        if (esCorreccion) {
+            await this.updateUserState(user.id, 'revision');
+            await this.delay(400);
+            await this.sendSummary(telefono, user.id);
+        } else {
+            await this.updateUserState(user.id, 'pregunta_7');
+            await this.delay(400);
+            await this.sendQuestion(telefono, 7);
+        }
     }
 
     async processEsperandoImagen(user, telefono, messageType, mediaId, mensaje = '') {
@@ -457,11 +544,13 @@ class ConversationService {
         summary += `*2.* Empresa cliente: ${reporte.empresa_cliente || 'No registrada'}\n`;
         summary += `*3.* Orden de producción: ${reporte.orden_produccion || 'No registrada'}\n`;
         summary += `*4.* Referencia: ${reporte.referencia || 'No registrada'}\n`;
-        summary += `*5.* Descripción NC: ${reporte.descripcion_nc || 'No registrada'}\n`;
-        summary += `*6.* Fecha: ${this.formatDateForDisplay(reporte.fecha_evento) || 'No registrada'}\n`;
-        summary += `*7.* Nivel de impacto: ${reporte.nivel_impacto || 'No registrado'}\n`;
-        summary += `*8.* Acción inmediata: ${accion}\n`;
-        summary += `*9.* Evidencia: ${reporte.evidencia_url ? reporte.evidencia_url : 'Sin foto'}\n`;
+        summary += `*5.* Cantidad No Conformes: ${reporte.cantidad_nc || 'No registrada'}\n`;
+        summary += `*6.* Cantidad total producida: ${reporte.cantidad_total || 'No registrada'}\n`;
+        summary += `*7.* Descripción NC: ${reporte.descripcion_nc || 'No registrada'}\n`;
+        summary += `*8.* Fecha: ${this.formatDateForDisplay(reporte.fecha_evento) || 'No registrada'}\n`;
+        summary += `*9.* Nivel de impacto: ${reporte.nivel_impacto || 'No registrado'}\n`;
+        summary += `*10.* Acción inmediata: ${accion}\n`;
+        summary += `*11.* Evidencia: ${reporte.evidencia_url ? reporte.evidencia_url : 'Sin foto'}\n`;
 
         await whatsappService.sendTextMessage(telefono, summary);
         await this.delay(800);
@@ -496,7 +585,7 @@ class ConversationService {
 
     async sendCorrectionList(telefono) {
         const rows = [];
-        for (let i = 1; i <= 9; i++) {
+        for (let i = 1; i <= 11; i++) {
             const pregunta = PREGUNTAS[i];
             rows.push({
                 id: `corregir_${i}`,
@@ -518,7 +607,7 @@ class ConversationService {
     async processSeleccionCorreccion(user, mensaje, telefono, messageType, interactiveId) {
         if (messageType === 'interactive' && interactiveId && interactiveId.startsWith('corregir_')) {
             const numeroP = parseInt(interactiveId.replace('corregir_', ''));
-            if (numeroP >= 1 && numeroP <= 8) {
+            if (numeroP >= 1 && numeroP <= 11) {
                 await this.updateUserState(user.id, `corregir_${numeroP}`);
                 await this.sendQuestion(telefono, numeroP);
                 return;
@@ -545,13 +634,13 @@ class ConversationService {
 
         const respuestaFinal = this.resolveResponse(pregunta, mensaje, messageType, interactiveId);
 
-        // Validación especial para la fecha (corrección pregunta 6)
-        if (numeroP === 6) {
+        // Validación especial para la fecha (corrección pregunta 8)
+        if (numeroP === 8) {
             const fechaMysql = this.parseDate(respuestaFinal);
             if (!fechaMysql) {
                 await whatsappService.sendTextMessage(
                     telefono,
-                    '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *15/03/2024*\n• *15-03-2024*\n\n📅 ¿Cuándo ocurrió?'
+                    '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *1/01/2026*\n• *1-01-2025*\n\n📅 ¿Cuándo ocurrió?'
                 );
                 return;
             }
@@ -570,10 +659,11 @@ class ConversationService {
             2: 'empresa_cliente',
             3: 'orden_produccion',
             4: 'referencia',
-            5: 'descripcion_nc',
-            6: 'fecha_evento',
-            7: 'nivel_impacto',
-            8: 'accion_inmediata'
+            // 5 y 6 tienen sub-estado propio para cantidad
+            7: 'descripcion_nc',
+            8: 'fecha_evento',
+            9: 'nivel_impacto',
+            10: 'accion_inmediata'
         };
 
         const campo = campoMap[numeroP];
@@ -581,8 +671,8 @@ class ConversationService {
             await this.updateReporte(reporte.id, campo, respuestaFinal);
         }
 
-        // Caso especial: corrección de foto (pregunta 9)
-        if (numeroP === 9) {
+        // Caso especial: corrección de foto (pregunta 11)
+        if (numeroP === 11) {
             if (respuestaFinal === 'Sí') {
                 await this.updateUserState(user.id, 'esperando_imagen');
                 await whatsappService.sendTextMessage(
@@ -609,9 +699,33 @@ class ConversationService {
             return;
         }
 
-        // Caso especial: corrección de acción inmediata "Sí"
-        if (numeroP === 8 && respuestaFinal === 'Sí') {
-            await this.updateUserState(user.id, 'corregir_8_descripcion');
+        // Caso especial: corrección de cantidad NC (pregunta 5)
+        if (numeroP === 5) {
+            const sufijo = respuestaFinal === 'Unidades' ? '_und' : '_lam';
+            await this.updateUserState(user.id, `corregir_5_cantidad${sufijo}`);
+            const unidadTexto = respuestaFinal === 'Unidades' ? 'unidades' : 'láminas';
+            await whatsappService.sendTextMessage(
+                telefono,
+                `📦 Escribe la cantidad de No Conformes en ${unidadTexto}:\n\n_Ej: ${respuestaFinal === 'Unidades' ? '20' : '10'}_`
+            );
+            return;
+        }
+
+        // Caso especial: corrección de cantidad total (pregunta 6)
+        if (numeroP === 6) {
+            const sufijo = respuestaFinal === 'Unidades' ? '_und' : '_lam';
+            await this.updateUserState(user.id, `corregir_6_cantidad${sufijo}`);
+            const unidadTexto = respuestaFinal === 'Unidades' ? 'unidades' : 'láminas';
+            await whatsappService.sendTextMessage(
+                telefono,
+                `📦 Escribe la cantidad total producida en ${unidadTexto}:\n\n_Ej: ${respuestaFinal === 'Unidades' ? '200' : '1000'}_`
+            );
+            return;
+        }
+
+        // Caso especial: corrección de acción inmediata "Sí" (pregunta 10)
+        if (numeroP === 10 && respuestaFinal === 'Sí') {
+            await this.updateUserState(user.id, 'corregir_10_descripcion');
             await whatsappService.sendTextMessage(
                 telefono,
                 '📝 Describe brevemente la acción inmediata que se realizó:'
@@ -620,7 +734,7 @@ class ConversationService {
         }
 
         // Limpiar descripcion_accion si corrigió a "No"
-        if (numeroP === 8 && respuestaFinal === 'No') {
+        if (numeroP === 10 && respuestaFinal === 'No') {
             await this.updateReporte(reporte.id, 'descripcion_accion', null);
         }
 

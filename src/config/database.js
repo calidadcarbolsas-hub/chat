@@ -32,6 +32,14 @@ async function initDatabase() {
     }
 }
 
+async function addColumnIfNotExists(columnName, columnDef) {
+    try {
+        await pool.execute(`ALTER TABLE reportes_nc ADD COLUMN ${columnName} ${columnDef}`);
+    } catch (error) {
+        if (error.errno !== 1060) throw error; // 1060 = Duplicate column name (ya existe)
+    }
+}
+
 async function createTables() {
     const createUsuariosTable = `
         CREATE TABLE IF NOT EXISTS usuarios (
@@ -54,6 +62,8 @@ async function createTables() {
             empresa_cliente VARCHAR(255) COMMENT 'Empresa del cliente relacionada',
             orden_produccion VARCHAR(100) COMMENT 'Número de orden de producción',
             referencia VARCHAR(100) COMMENT 'Número de referencia',
+            cantidad_nc VARCHAR(100) COMMENT 'Cantidad de No Conformes (ej: 20 und)',
+            cantidad_total VARCHAR(100) COMMENT 'Cantidad total producida de la orden (ej: 1000 láminas)',
             descripcion_nc TEXT COMMENT 'Descripción breve de lo ocurrido',
             fecha_evento DATE COMMENT 'Fecha en que ocurrió la eventualidad',
             nivel_impacto VARCHAR(50) COMMENT 'Alto / Medio / Bajo',
@@ -72,6 +82,9 @@ async function createTables() {
     try {
         await pool.execute(createUsuariosTable);
         await pool.execute(createReportesNCTable);
+        // Agregar columnas nuevas a tablas existentes si aún no existen
+        await addColumnIfNotExists('cantidad_nc', 'VARCHAR(100) COMMENT \'Cantidad de No Conformes\' AFTER referencia');
+        await addColumnIfNotExists('cantidad_total', 'VARCHAR(100) COMMENT \'Cantidad total producida de la orden\' AFTER cantidad_nc');
         console.log('📋 Tablas CARBOLSAS verificadas/creadas correctamente');
     } catch (error) {
         console.error('Error creando tablas:', error.message);

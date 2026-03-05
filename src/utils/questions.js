@@ -24,6 +24,9 @@ const PREGUNTAS = {
             'Impresión',
             'Descatornado',
             'Pegado',
+            'Cliente',
+            'Post-venta',
+            'Entrega',
             'Otro'
         ],
         opciones: [
@@ -33,6 +36,9 @@ const PREGUNTAS = {
             'Impresión',
             'Descatornado',
             'Pegado',
+            'Cliente (Atención al cliente)',
+            'Post-venta (Servicio al cliente luego de la venta)',
+            'Entrega (Logística)',
             'Otro (Cuál)'
         ]
     },
@@ -56,20 +62,36 @@ const PREGUNTAS = {
     },
     5: {
         numero: 5,
+        categoria: 'CANTIDAD DE NO CONFORMES',
+        texto: '🔢 Ingrese la cantidad de No Conformes:\n\n¿En qué unidad de medida?',
+        tipo: 'opciones',
+        titulos: ['Unidades', 'Láminas'],
+        opciones: ['Unidades', 'Láminas']
+    },
+    6: {
+        numero: 6,
+        categoria: 'CANTIDAD TOTAL PRODUCIDA',
+        texto: '🔢 Ingrese la cantidad total producida de la orden de producción:\n\n¿En qué unidad de medida?',
+        tipo: 'opciones',
+        titulos: ['Unidades', 'Láminas'],
+        opciones: ['Unidades', 'Láminas']
+    },
+    7: {
+        numero: 7,
         categoria: 'DESCRIPCIÓN DE NC',
         texto: `✍️ Describe brevemente lo ocurrido:
 
 _Ej: Impresión corrida, faltante en pedido, daño en máquina, plancha desactualizada._`,
         tipo: 'texto'
     },
-    6: {
-        numero: 6,
+    8: {
+        numero: 8,
         categoria: 'FECHA DE LA EVENTUALIDAD',
         texto: '📅 ¿Cuándo ocurrió?\n\nEscribe la fecha así:\n• *15/03/2024*\n• *15-03-2024*',
         tipo: 'texto'
     },
-    7: {
-        numero: 7,
+    9: {
+        numero: 9,
         categoria: 'NIVEL DE IMPACTO',
         texto: '🚦 ¿Qué nivel de impacto tuvo la eventualidad?',
         tipo: 'opciones',
@@ -84,8 +106,8 @@ _Ej: Impresión corrida, faltante en pedido, daño en máquina, plancha desactua
             'Bajo (no afecta entrega)'
         ]
     },
-    8: {
-        numero: 8,
+    10: {
+        numero: 10,
         categoria: 'ACCIÓN INMEDIATA',
         texto: '🛠️ ¿Se realizó alguna acción inmediata?',
         tipo: 'opciones',
@@ -98,8 +120,8 @@ _Ej: Impresión corrida, faltante en pedido, daño en máquina, plancha desactua
             'No'
         ]
     },
-    9: {
-        numero: 9,
+    11: {
+        numero: 11,
         categoria: 'EVIDENCIA FOTOGRÁFICA',
         texto: '📷 ¿Deseas adjuntar una foto como evidencia de la NC?',
         tipo: 'opciones',
