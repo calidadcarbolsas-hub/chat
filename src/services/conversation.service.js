@@ -584,23 +584,34 @@ class ConversationService {
     }
 
     async sendCorrectionList(telefono) {
-        const rows = [];
-        for (let i = 1; i <= 11; i++) {
+        // WhatsApp permite máximo 10 filas en total entre todas las secciones
+        const buildRow = (i) => {
             const pregunta = PREGUNTAS[i];
-            rows.push({
+            return {
                 id: `corregir_${i}`,
                 title: `Paso ${i}`,
                 description: pregunta.categoria.length > 72
                     ? pregunta.categoria.substring(0, 69) + '...'
                     : pregunta.categoria
-            });
-        }
+            };
+        };
+
+        const sections = [
+            {
+                title: 'Datos del reporte (1-5)',
+                rows: [1, 2, 3, 4, 5].map(buildRow)
+            },
+            {
+                title: 'Detalles del evento (6-10)',
+                rows: [6, 7, 8, 9, 10].map(buildRow)
+            }
+        ];
 
         await whatsappService.sendInteractiveList(
             telefono,
             '¿Qué dato deseas corregir?',
             'Ver opciones',
-            [{ title: 'Campos del reporte', rows }]
+            sections
         );
     }
 
