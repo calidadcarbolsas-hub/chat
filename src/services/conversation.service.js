@@ -1,7 +1,7 @@
 const { getPool } = require('../config/database');
 const whatsappService = require('./whatsapp.service');
 const driveService = require('./drive.service');
-const { PREGUNTAS, MENSAJES } = require('../utils/questions');
+const { PREGUNTAS, PREGUNTAS_EXTRA, MENSAJES } = require('../utils/questions');
 
 class ConversationService {
 
@@ -65,8 +65,10 @@ class ConversationService {
         const pool = getPool();
         const camposPermitidos = [
             'area', 'area_otro', 'empresa_cliente', 'orden_produccion',
-            'referencia', 'cantidad_nc', 'cantidad_total', 'descripcion_nc',
-            'fecha_evento', 'nivel_impacto', 'accion_inmediata', 'descripcion_accion',
+            'referencia', 'precio_caja', 'cantidad_cajas',
+            'cantidad_nc', 'cantidad_total', 'descripcion_nc',
+            'fecha_evento', 'nivel_impacto', 'descripcion_impacto',
+            'accion_inmediata', 'descripcion_accion',
             'evidencia_url'
         ];
 
@@ -155,6 +157,18 @@ class ConversationService {
             await this.processAccionDescripcion(user, mensaje, telefono);
             return;
         }
+        if (estado === 'corregir_9_descripcion') {
+            await this.processImpactoDescripcion(user, mensaje, telefono, true);
+            return;
+        }
+        if (estado === 'corregir_precio_caja') {
+            await this.processPrecioCaja(user, mensaje, telefono, true);
+            return;
+        }
+        if (estado === 'corregir_cantidad_cajas') {
+            await this.processCantidadCajas(user, mensaje, telefono, true);
+            return;
+        }
 
         // Estados de corrección
         if (estado.startsWith('corregir_')) {
@@ -183,6 +197,18 @@ class ConversationService {
 
             case 'pregunta_1_otro':
                 await this.processAreaOtro(user, mensaje, telefono);
+                break;
+
+            case 'pregunta_precio_caja':
+                await this.processPrecioCaja(user, mensaje, telefono, false);
+                break;
+
+            case 'pregunta_cantidad_cajas':
+                await this.processCantidadCajas(user, mensaje, telefono, false);
+                break;
+
+            case 'pregunta_9_descripcion':
+                await this.processImpactoDescripcion(user, mensaje, telefono, false);
                 break;
 
             case 'pregunta_10_descripcion':
@@ -233,7 +259,10 @@ class ConversationService {
     // ==================== PREGUNTAS ====================
 
     async sendQuestion(telefono, numeroP) {
-        const pregunta = PREGUNTAS[numeroP];
+        // Soporte para preguntas extra con clave string
+        const pregunta = typeof numeroP === 'string'
+            ? PREGUNTAS_EXTRA[numeroP]
+            : PREGUNTAS[numeroP];
 
         if (!pregunta) {
             console.error(`Pregunta ${numeroP} no encontrada`);
@@ -368,6 +397,14 @@ class ConversationService {
             return;
         }
 
+        // Caso especial: Pregunta 1 selección normal → ir a precio_caja
+        if (numeroP === 1) {
+            await this.updateUserState(user.id, 'pregunta_precio_caja');
+            await this.delay(400);
+            await this.sendQuestion(telefono, 'precio_caja');
+            return;
+        }
+
         // Caso especial: Pregunta 5 → selección de unidad para cantidad NC
         if (numeroP === 5) {
             const sufijo = respuestaFinal === 'Unidades' ? '_und' : '_lam';
@@ -388,6 +425,17 @@ class ConversationService {
             await whatsappService.sendTextMessage(
                 telefono,
                 `📦 Escribe la cantidad total producida en ${unidadTexto}:\n\n_Ej: ${respuestaFinal === 'Unidades' ? '200' : '1000'}_`
+            );
+            return;
+        }
+
+        // Caso especial: Pregunta 9 → pedir descripción del impacto
+        if (numeroP === 9) {
+            await this.updateUserState(user.id, 'pregunta_9_descripcion');
+            await this.delay(400);
+            await whatsappService.sendTextMessage(
+                telefono,
+                '📝 Describe brevemente el impacto de esta eventualidad:'
             );
             return;
         }
@@ -434,9 +482,9 @@ class ConversationService {
         const reporte = await this.getReporteActivo(user.id);
         await this.updateReporte(reporte.id, 'area_otro', mensaje);
 
-        await this.updateUserState(user.id, 'pregunta_2');
+        await this.updateUserState(user.id, 'pregunta_precio_caja');
         await this.delay(400);
-        await this.sendQuestion(telefono, 2);
+        await this.sendQuestion(telefono, 'precio_caja');
     }
 
     async processAccionDescripcion(user, mensaje, telefono) {
@@ -446,6 +494,67 @@ class ConversationService {
         await this.updateUserState(user.id, 'pregunta_11');
         await this.delay(400);
         await this.sendQuestion(telefono, 11);
+    }
+
+    async processPrecioCaja(user, mensaje, telefono, esCorreccion) {
+        const valor = this.parsePrice(mensaje);
+        if (valor === null || valor <= 0) {
+            await whatsappService.sendTextMessage(
+                telefono,
+                '⚠️ No pude entender ese valor. Escribe solo el número:\n\n_Ej: 2000 o 2.000_'
+            );
+            return;
+        }
+        const reporte = await this.getReporteActivo(user.id);
+        await this.updateReporte(reporte.id, 'precio_caja', valor);
+
+        if (esCorreccion) {
+            await this.updateUserState(user.id, 'revision');
+            await this.delay(400);
+            await this.sendSummary(telefono, user.id);
+        } else {
+            await this.updateUserState(user.id, 'pregunta_cantidad_cajas');
+            await this.delay(400);
+            await this.sendQuestion(telefono, 'cantidad_cajas');
+        }
+    }
+
+    async processCantidadCajas(user, mensaje, telefono, esCorreccion) {
+        const cantidad = parseInt(mensaje.trim(), 10);
+        if (isNaN(cantidad) || cantidad <= 0) {
+            await whatsappService.sendTextMessage(
+                telefono,
+                '⚠️ Por favor escribe un número entero válido.\n\n_Ej: 150_'
+            );
+            return;
+        }
+        const reporte = await this.getReporteActivo(user.id);
+        await this.updateReporte(reporte.id, 'cantidad_cajas', cantidad);
+
+        if (esCorreccion) {
+            await this.updateUserState(user.id, 'revision');
+            await this.delay(400);
+            await this.sendSummary(telefono, user.id);
+        } else {
+            await this.updateUserState(user.id, 'pregunta_2');
+            await this.delay(400);
+            await this.sendQuestion(telefono, 2);
+        }
+    }
+
+    async processImpactoDescripcion(user, mensaje, telefono, esCorreccion) {
+        const reporte = await this.getReporteActivo(user.id);
+        await this.updateReporte(reporte.id, 'descripcion_impacto', mensaje);
+
+        if (esCorreccion) {
+            await this.updateUserState(user.id, 'revision');
+            await this.delay(400);
+            await this.sendSummary(telefono, user.id);
+        } else {
+            await this.updateUserState(user.id, 'pregunta_10');
+            await this.delay(400);
+            await this.sendQuestion(telefono, 10);
+        }
     }
 
     async processCantidadNcCantidad(user, mensaje, telefono, estado, esCorreccion) {
@@ -539,18 +648,25 @@ class ConversationService {
             ? `Sí → ${reporte.descripcion_accion}`
             : reporte.accion_inmediata || 'No registrada';
 
+        const precioCaja = reporte.precio_caja != null
+            ? '$' + Number(reporte.precio_caja).toLocaleString('es-CO')
+            : 'No registrado';
+
         let summary = '📋 *Resumen del reporte NC:*\n\n';
         summary += `*1.* Área: ${area || 'No registrada'}\n`;
-        summary += `*2.* Empresa cliente: ${reporte.empresa_cliente || 'No registrada'}\n`;
-        summary += `*3.* Orden de producción: ${reporte.orden_produccion || 'No registrada'}\n`;
-        summary += `*4.* Referencia: ${reporte.referencia || 'No registrada'}\n`;
-        summary += `*5.* Cantidad No Conformes: ${reporte.cantidad_nc || 'No registrada'}\n`;
-        summary += `*6.* Cantidad total producida: ${reporte.cantidad_total || 'No registrada'}\n`;
-        summary += `*7.* Descripción NC: ${reporte.descripcion_nc || 'No registrada'}\n`;
-        summary += `*8.* Fecha: ${this.formatDateForDisplay(reporte.fecha_evento) || 'No registrada'}\n`;
-        summary += `*9.* Nivel de impacto: ${reporte.nivel_impacto || 'No registrado'}\n`;
-        summary += `*10.* Acción inmediata: ${accion}\n`;
-        summary += `*11.* Evidencia: ${reporte.evidencia_url ? reporte.evidencia_url : 'Sin foto'}\n`;
+        summary += `*2.* Precio de la caja: ${precioCaja}\n`;
+        summary += `*3.* Cantidad de cajas: ${reporte.cantidad_cajas || 'No registrada'}\n`;
+        summary += `*4.* Empresa cliente: ${reporte.empresa_cliente || 'No registrada'}\n`;
+        summary += `*5.* Orden de producción: ${reporte.orden_produccion || 'No registrada'}\n`;
+        summary += `*6.* Referencia: ${reporte.referencia || 'No registrada'}\n`;
+        summary += `*7.* Cantidad No Conformes: ${reporte.cantidad_nc || 'No registrada'}\n`;
+        summary += `*8.* Cantidad total producida: ${reporte.cantidad_total || 'No registrada'}\n`;
+        summary += `*9.* Descripción NC: ${reporte.descripcion_nc || 'No registrada'}\n`;
+        summary += `*10.* Fecha: ${this.formatDateForDisplay(reporte.fecha_evento) || 'No registrada'}\n`;
+        summary += `*11.* Nivel de impacto: ${reporte.nivel_impacto || 'No registrado'}\n`;
+        summary += `*12.* Descripción del impacto: ${reporte.descripcion_impacto || 'No registrada'}\n`;
+        summary += `*13.* Acción inmediata: ${accion}\n`;
+        summary += `*14.* Evidencia: ${reporte.evidencia_url ? reporte.evidencia_url : 'Sin foto'}\n`;
 
         await whatsappService.sendTextMessage(telefono, summary);
         await this.delay(800);
@@ -585,25 +701,26 @@ class ConversationService {
 
     async sendCorrectionList(telefono) {
         // WhatsApp permite máximo 10 filas en total entre todas las secciones
-        const buildRow = (i) => {
-            const pregunta = PREGUNTAS[i];
-            return {
-                id: `corregir_${i}`,
-                title: `Paso ${i}`,
-                description: pregunta.categoria.length > 72
-                    ? pregunta.categoria.substring(0, 69) + '...'
-                    : pregunta.categoria
-            };
-        };
-
         const sections = [
             {
-                title: 'Datos básicos',
-                rows: [1, 2, 3, 4, 5].map(buildRow)
+                title: 'Datos del proceso',
+                rows: [
+                    { id: 'corregir_1',             title: 'Área',         description: 'ÁREA O PROCESO' },
+                    { id: 'corregir_precio_caja',    title: 'Precio caja',  description: 'PRECIO DE LA CAJA' },
+                    { id: 'corregir_cantidad_cajas', title: 'Cant. cajas',  description: 'CANTIDAD DE CAJAS' },
+                    { id: 'corregir_2',             title: 'Empresa',      description: 'EMPRESA DEL CLIENTE' },
+                    { id: 'corregir_3',             title: 'Orden prod.',  description: 'NO. ORDEN DE PRODUCCIÓN' }
+                ]
             },
             {
                 title: 'Detalles del evento',
-                rows: [6, 7, 8, 9, 10].map(buildRow)
+                rows: [
+                    { id: 'corregir_4',             title: 'Referencia',   description: 'NO. REFERENCIA' },
+                    { id: 'corregir_5',             title: 'Cant. NC',     description: 'CANTIDAD DE NO CONFORMES' },
+                    { id: 'corregir_7',             title: 'Descripción',  description: 'DESCRIPCIÓN DE NC' },
+                    { id: 'corregir_9',             title: 'Impacto',      description: 'NIVEL DE IMPACTO' },
+                    { id: 'corregir_9_descripcion', title: 'Desc. impacto',description: 'DESCRIPCIÓN DEL IMPACTO' }
+                ]
             }
         ];
 
@@ -617,8 +734,29 @@ class ConversationService {
 
     async processSeleccionCorreccion(user, mensaje, telefono, messageType, interactiveId) {
         if (messageType === 'interactive' && interactiveId && interactiveId.startsWith('corregir_')) {
-            const numeroP = parseInt(interactiveId.replace('corregir_', ''));
-            if (numeroP >= 1 && numeroP <= 11) {
+            const parte = interactiveId.replace('corregir_', '');
+
+            if (parte === 'precio_caja') {
+                await this.updateUserState(user.id, 'corregir_precio_caja');
+                await this.sendQuestion(telefono, 'precio_caja');
+                return;
+            }
+            if (parte === 'cantidad_cajas') {
+                await this.updateUserState(user.id, 'corregir_cantidad_cajas');
+                await this.sendQuestion(telefono, 'cantidad_cajas');
+                return;
+            }
+            if (parte === '9_descripcion') {
+                await this.updateUserState(user.id, 'corregir_9_descripcion');
+                await whatsappService.sendTextMessage(
+                    telefono,
+                    '📝 Escribe la nueva descripción del impacto:'
+                );
+                return;
+            }
+
+            const numeroP = parseInt(parte);
+            if (!isNaN(numeroP) && numeroP >= 1 && numeroP <= 11) {
                 await this.updateUserState(user.id, `corregir_${numeroP}`);
                 await this.sendQuestion(telefono, numeroP);
                 return;
@@ -758,6 +896,29 @@ class ConversationService {
 
     delay(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
+     * Interpreta un valor de precio ingresado por el usuario.
+     * Acepta: "2000", "2.000", "2000.50", "2.000,50"
+     * Retorna el número como float, o null si no es válido.
+     */
+    parsePrice(input) {
+        const str = input.trim().replace(/\s/g, '');
+
+        // Caso: separador de miles con punto y decimales con coma → "2.000,50"
+        if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(str)) {
+            return parseFloat(str.replace(/\./g, '').replace(',', '.'));
+        }
+
+        // Caso: separador de miles con punto sin decimales → "2.000"
+        if (/^\d{1,3}(\.\d{3})+$/.test(str)) {
+            return parseFloat(str.replace(/\./g, ''));
+        }
+
+        // Caso: número plano con decimales opcionales → "2000" o "2000.50"
+        const valor = parseFloat(str.replace(',', '.'));
+        return isNaN(valor) ? null : valor;
     }
 
     /**

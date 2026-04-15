@@ -24,6 +24,7 @@ const PREGUNTAS = {
             'Impresión',
             'Descatornado',
             'Pegado',
+            'Diseño',
             'Cliente',
             'Post-venta',
             'Entrega',
@@ -36,6 +37,7 @@ const PREGUNTAS = {
             'Impresión',
             'Descatornado',
             'Pegado',
+            'Diseño',
             'Cliente (Atención al cliente)',
             'Post-venta (Servicio al cliente luego de la venta)',
             'Entrega (Logística)',
@@ -136,7 +138,22 @@ _Ej: Impresión corrida, faltante en pedido, daño en máquina, plancha desactua
     }
 };
 
+// Preguntas adicionales fuera del flujo numerado principal
+const PREGUNTAS_EXTRA = {
+    precio_caja: {
+        categoria: 'PRECIO DE LA CAJA',
+        texto: '💰 ¿Cuál es el precio de la caja?\n\n_Escribe el valor en pesos. Ej: 2000 o 2.000_',
+        tipo: 'texto'
+    },
+    cantidad_cajas: {
+        categoria: 'CANTIDAD DE CAJAS',
+        texto: '📦 ¿Cuántas cajas tiene la orden?\n\n_Ej: 150_',
+        tipo: 'texto'
+    }
+};
+
 module.exports = {
     MENSAJES,
-    PREGUNTAS
+    PREGUNTAS,
+    PREGUNTAS_EXTRA
 };

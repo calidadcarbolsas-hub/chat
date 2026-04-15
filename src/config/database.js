@@ -85,6 +85,9 @@ async function createTables() {
         // Agregar columnas nuevas a tablas existentes si aún no existen
         await addColumnIfNotExists('cantidad_nc', 'VARCHAR(100) COMMENT \'Cantidad de No Conformes\' AFTER referencia');
         await addColumnIfNotExists('cantidad_total', 'VARCHAR(100) COMMENT \'Cantidad total producida de la orden\' AFTER cantidad_nc');
+        await addColumnIfNotExists('precio_caja', "DECIMAL(15,2) COMMENT 'Precio de la caja en pesos' AFTER referencia");
+        await addColumnIfNotExists('cantidad_cajas', "INT COMMENT 'Cantidad de cajas de la orden' AFTER precio_caja");
+        await addColumnIfNotExists('descripcion_impacto', "TEXT COMMENT 'Descripción del impacto de la NC' AFTER nivel_impacto");
         console.log('📋 Tablas CARBOLSAS verificadas/creadas correctamente');
     } catch (error) {
         console.error('Error creando tablas:', error.message);
