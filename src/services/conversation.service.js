@@ -37,8 +37,10 @@ class ConversationService {
 
     async updateUserState(userId, estado) {
         const pool = getPool();
+        // Se fuerza fecha_actualizacion = NOW() explícitamente para que el check de
+        // inactividad funcione correctamente incluso si el estado no cambia de valor.
         await pool.execute(
-            'UPDATE usuarios SET estado_conversacion = ? WHERE id = ?',
+            'UPDATE usuarios SET estado_conversacion = ?, fecha_actualizacion = NOW() WHERE id = ?',
             [estado, userId]
         );
     }
