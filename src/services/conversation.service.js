@@ -385,6 +385,23 @@ class ConversationService {
         const numeroP = parseInt(estado.split('_')[1]);
         const pregunta = PREGUNTAS[numeroP];
 
+        // Caso especial: Q1 con texto libre → área personalizada (no está en la lista)
+        if (numeroP === 1 && messageType === 'text') {
+            const esOpcionValida = pregunta.opciones.some(
+                op => op.toLowerCase().trim() === mensaje.toLowerCase().trim()
+            );
+            if (!esOpcionValida) {
+                const reporte = await this.getReporteActivo(user.id);
+                const reporteActivo = reporte || await this.getReporteActivo(user.id);
+                await this.updateReporte(reporteActivo.id, 'area', 'Otro');
+                await this.updateReporte(reporteActivo.id, 'area_otro', mensaje.trim());
+                await this.updateUserState(user.id, 'pregunta_precio_caja');
+                await this.delay(400);
+                await this.sendQuestion(telefono, 'precio_caja');
+                return;
+            }
+        }
+
         if (!this.validateOptionResponse(pregunta, mensaje, messageType)) {
             await whatsappService.sendTextMessage(
                 telefono,

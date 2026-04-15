@@ -15,7 +15,7 @@ const PREGUNTAS = {
     1: {
         numero: 1,
         categoria: 'ÁREA O PROCESO',
-        texto: '📍 ¿En qué área ocurrió la situación?',
+        texto: '📍 ¿En qué área ocurrió la situación?\n\n_Si tu área no aparece en la lista, escríbela directamente._',
         tipo: 'opciones',
         titulos: [
             'Ventas',
@@ -27,8 +27,7 @@ const PREGUNTAS = {
             'Diseño',
             'Cliente',
             'Post-venta',
-            'Entrega',
-            'Otro'
+            'Entrega'
         ],
         opciones: [
             'Ventas',
@@ -40,8 +39,7 @@ const PREGUNTAS = {
             'Diseño',
             'Cliente (Atención al cliente)',
             'Post-venta (Servicio al cliente luego de la venta)',
-            'Entrega (Logística)',
-            'Otro (Cuál)'
+            'Entrega (Logística)'
         ]
     },
     2: {
