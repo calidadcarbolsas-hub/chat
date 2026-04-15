@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS reportes_nc (
     descripcion_impacto TEXT COMMENT 'Descripción del impacto de la NC',
     accion_inmediata VARCHAR(10) COMMENT 'Si / No',
     descripcion_accion TEXT COMMENT 'Descripción de la acción inmediata si aplica',
-    estado VARCHAR(20) DEFAULT 'pendiente' COMMENT 'pendiente / revisado / cerrado',
+    estado VARCHAR(20) DEFAULT 'pendiente' COMMENT 'pendiente / revisado / cerrado / abandonado',
     fecha_reporte TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Fecha en que se registró el reporte',
     FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
     INDEX idx_usuario (usuario_id),
@@ -98,3 +98,9 @@ ORDER BY r.fecha_reporte DESC;
 
 -- Estadísticas por nivel de impacto
 -- SELECT nivel_impacto, COUNT(*) as total FROM reportes_nc GROUP BY nivel_impacto;
+
+-- Ver reportes abandonados
+-- SELECT * FROM reporte_nc_completo WHERE estado = 'abandonado';
+
+-- Tasa de abandono por área
+-- SELECT area, COUNT(*) as abandonados FROM reportes_nc WHERE estado = 'abandonado' GROUP BY area ORDER BY abandonados DESC;

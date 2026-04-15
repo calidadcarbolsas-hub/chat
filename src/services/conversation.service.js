@@ -90,6 +90,33 @@ class ConversationService {
         );
     }
 
+    async marcarReporteAbandonado(userId) {
+        const pool = getPool();
+        // Marca como abandonado el reporte más reciente que aún esté incompleto (estado = 'pendiente' sin confirmación)
+        // Se usa subquery para compatibilidad con MySQL al combinar UPDATE + ORDER BY + LIMIT
+        await pool.execute(
+            `UPDATE reportes_nc SET estado = 'abandonado'
+             WHERE id = (
+                 SELECT id FROM (
+                     SELECT id FROM reportes_nc
+                     WHERE usuario_id = ? AND estado = 'pendiente'
+                     ORDER BY fecha_reporte DESC
+                     LIMIT 1
+                 ) AS t
+             )`,
+            [userId]
+        );
+    }
+
+    async resetConversacion(user, telefono) {
+        // Solo abandona el reporte si hay uno en curso (no aplica para completado ni inicio)
+        const tieneReporteEnCurso = !['inicio', 'completado'].includes(user.estado_conversacion);
+        if (tieneReporteEnCurso) {
+            await this.marcarReporteAbandonado(user.id);
+        }
+        await this.sendWelcome(telefono, user.id);
+    }
+
     // ==================== HANDLER PRINCIPAL ====================
 
     async handleMessage(telefono, mensaje, messageId, messageType, interactiveId, mediaId = null) {
@@ -135,6 +162,32 @@ class ConversationService {
     async processState(user, mensaje, telefono, messageType, interactiveId, mediaId = null) {
         const estado = user.estado_conversacion;
         console.log('   📍 Estado actual:', estado);
+
+        // ── RESET POR INACTIVIDAD (24 horas) ────────────────────────────────
+        const tieneReporteEnCurso = !['inicio', 'completado'].includes(estado);
+        if (tieneReporteEnCurso && user.fecha_actualizacion) {
+            const horasInactivo = (Date.now() - new Date(user.fecha_actualizacion).getTime()) / 3600000;
+            if (horasInactivo >= 24) {
+                console.log(`   ⏰ Usuario inactivo ${horasInactivo.toFixed(1)}h → marcando reporte como abandonado`);
+                await whatsappService.sendTextMessage(
+                    telefono,
+                    '⏰ Tu registro anterior quedó incompleto y fue marcado como abandonado.\n\nVamos a iniciar uno nuevo.'
+                );
+                await this.resetConversacion(user, telefono);
+                return;
+            }
+        }
+
+        // ── PALABRAS CLAVE DE REINICIO ───────────────────────────────────────
+        const mensajeLower = (mensaje || '').toLowerCase().trim();
+        if (['nuevo', 'reiniciar'].includes(mensajeLower) && estado !== 'inicio') {
+            const aviso = tieneReporteEnCurso
+                ? '🔄 Registro anterior marcado como abandonado. Iniciando uno nuevo...'
+                : '🔄 Iniciando un nuevo registro...';
+            await whatsappService.sendTextMessage(telefono, aviso);
+            await this.resetConversacion(user, telefono);
+            return;
+        }
 
         // Sub-estados de cantidad (deben ir antes del check genérico de correccion)
         if (estado === 'pregunta_5_cantidad_und' || estado === 'pregunta_5_cantidad_lam') {
