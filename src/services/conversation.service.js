@@ -314,6 +314,21 @@ class ConversationService {
     // ==================== PREGUNTAS ====================
 
     async sendQuestion(telefono, numeroP) {
+        // Caso especial: pregunta 8 sugiere la fecha de hoy con botones
+        if (numeroP === 8) {
+            const hoy = new Date();
+            const dia  = String(hoy.getDate()).padStart(2, '0');
+            const mes  = String(hoy.getMonth() + 1).padStart(2, '0');
+            const anio = hoy.getFullYear();
+            const fechaDisplay = `${dia}/${mes}/${anio}`;
+            await whatsappService.sendInteractiveButtons(
+                telefono,
+                `📅 ¿Cuándo ocurrió?\n\n¿Fue hoy, *${fechaDisplay}*?`,
+                ['✅ Sí, hoy', '📝 Otra fecha']
+            );
+            return;
+        }
+
         // Soporte para preguntas extra con clave string
         const pregunta = typeof numeroP === 'string'
             ? PREGUNTAS_EXTRA[numeroP]
@@ -412,26 +427,42 @@ class ConversationService {
             return;
         }
 
-        const respuestaFinal = this.resolveResponse(pregunta, mensaje, messageType, interactiveId);
-
         // Validación especial para la fecha (pregunta 8)
         if (numeroP === 8) {
-            const fechaMysql = this.parseDate(respuestaFinal);
-            if (!fechaMysql) {
+            let fechaMysql = null;
+
+            if (messageType === 'interactive' && interactiveId === 'btn_0') {
+                // "Sí, hoy" → tomar fecha del servidor
+                const hoy = new Date();
+                fechaMysql = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+            } else if (messageType === 'interactive' && interactiveId === 'btn_1') {
+                // "Otra fecha" → pedir al usuario que escriba la fecha manualmente
                 await whatsappService.sendTextMessage(
                     telefono,
-                    '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *1/01/2026*\n• *1-03-2026*\n\n📅 ¿Cuándo ocurrió?'
+                    '✏️ Escribe la fecha así:\n\n• *22/04/2026*\n• *22-04-2026*\n\n📅 ¿Cuándo ocurrió?'
                 );
-                return;
+                return; // estado se mantiene en pregunta_8
+            } else {
+                // Texto libre → validar fecha escrita por el usuario
+                fechaMysql = this.parseDate(mensaje);
+                if (!fechaMysql) {
+                    await whatsappService.sendTextMessage(
+                        telefono,
+                        '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *22/04/2026*\n• *22-04-2026*\n\n📅 ¿Cuándo ocurrió?'
+                    );
+                    return;
+                }
             }
+
             const reporte = await this.getReporteActivo(user.id);
-            const reporteActivo = reporte || await this.getReporteActivo(user.id);
-            await this.updateReporte(reporteActivo.id, 'fecha_evento', fechaMysql);
+            await this.updateReporte(reporte.id, 'fecha_evento', fechaMysql);
             await this.updateUserState(user.id, 'pregunta_9');
             await this.delay(400);
             await this.sendQuestion(telefono, 9);
             return;
         }
+
+        const respuestaFinal = this.resolveResponse(pregunta, mensaje, messageType, interactiveId);
 
         const reporte = await this.getReporteActivo(user.id);
 
@@ -999,7 +1030,12 @@ class ConversationService {
      * Retorna null si el formato o la fecha no son válidos.
      */
     parseDate(input) {
-        const str = input.trim();
+        // Eliminar chars invisibles (zero-width, BOM) que WhatsApp puede insertar,
+        // y normalizar guiones tipográficos (en-dash u2013, em-dash u2014, etc.) a guion ASCII.
+        const str = input
+            .replace(/[​‌‍‎‏⁠﻿]/g, '')
+            .trim()
+            .replace(/[‒–—―−]/g, '-');
         let dia, mes, anio;
 
         // Con separador: DD/MM/AAAA, D/M/AAAA, DD-MM-AAAA, D-M-AAAA
