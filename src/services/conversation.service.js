@@ -884,18 +884,33 @@ class ConversationService {
             return;
         }
 
-        const respuestaFinal = this.resolveResponse(pregunta, mensaje, messageType, interactiveId);
-
         // Validación especial para la fecha (corrección pregunta 8)
         if (numeroP === 8) {
-            const fechaMysql = this.parseDate(respuestaFinal);
-            if (!fechaMysql) {
+            let fechaMysql = null;
+
+            if (messageType === 'interactive' && interactiveId === 'btn_0') {
+                // "Sí, hoy" → tomar fecha del servidor
+                const hoy = new Date();
+                fechaMysql = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+            } else if (messageType === 'interactive' && interactiveId === 'btn_1') {
+                // "Otra fecha" → pedir que escriba la fecha manualmente
                 await whatsappService.sendTextMessage(
                     telefono,
-                    '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *1/01/2026*\n• *1-01-2025*\n\n📅 ¿Cuándo ocurrió?'
+                    '✏️ Escribe la nueva fecha así:\n\n• *22/04/2026*\n• *22-04-2026*\n\n📅 ¿Cuándo ocurrió?'
                 );
-                return;
+                return; // estado se mantiene en corregir_8
+            } else {
+                // Texto libre → validar fecha escrita por el usuario
+                fechaMysql = this.parseDate(mensaje);
+                if (!fechaMysql) {
+                    await whatsappService.sendTextMessage(
+                        telefono,
+                        '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *22/04/2026*\n• *22-04-2026*\n\n📅 ¿Cuándo ocurrió?'
+                    );
+                    return;
+                }
             }
+
             const reporte = await this.getReporteActivo(user.id);
             await this.updateReporte(reporte.id, 'fecha_evento', fechaMysql);
             await this.updateUserState(user.id, 'revision');
@@ -903,6 +918,8 @@ class ConversationService {
             await this.sendSummary(telefono, user.id);
             return;
         }
+
+        const respuestaFinal = this.resolveResponse(pregunta, mensaje, messageType, interactiveId);
 
         const reporte = await this.getReporteActivo(user.id);
 
