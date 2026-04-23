@@ -821,8 +821,8 @@ class ConversationService {
                     { id: 'corregir_4',             title: 'Referencia',   description: 'NO. REFERENCIA' },
                     { id: 'corregir_5',             title: 'Cant. NC',     description: 'CANTIDAD DE NO CONFORMES' },
                     { id: 'corregir_7',             title: 'Descripción',  description: 'DESCRIPCIÓN DE NC' },
-                    { id: 'corregir_9',             title: 'Impacto',      description: 'NIVEL DE IMPACTO' },
-                    { id: 'corregir_9_descripcion', title: 'Desc. impacto',description: 'DESCRIPCIÓN DEL IMPACTO' }
+                    { id: 'corregir_8',             title: 'Fecha',        description: 'FECHA DE LA EVENTUALIDAD' },
+                    { id: 'corregir_9',             title: 'Impacto',      description: 'NIVEL DE IMPACTO' }
                 ]
             }
         ];
