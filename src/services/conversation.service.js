@@ -313,14 +313,25 @@ class ConversationService {
 
     // ==================== PREGUNTAS ====================
 
+    // Devuelve la fecha actual en zona horaria de Colombia (UTC-5)
+    getTodayBogota() {
+        const parts = new Intl.DateTimeFormat('es-CO', {
+            timeZone: 'America/Bogota',
+            year: 'numeric', month: '2-digit', day: '2-digit'
+        }).formatToParts(new Date());
+        const dia  = parts.find(p => p.type === 'day').value;
+        const mes  = parts.find(p => p.type === 'month').value;
+        const anio = parts.find(p => p.type === 'year').value;
+        return {
+            display: `${dia}/${mes}/${anio}`,
+            mysql:   `${anio}-${mes}-${dia}`
+        };
+    }
+
     async sendQuestion(telefono, numeroP) {
         // Caso especial: pregunta 8 sugiere la fecha de hoy con botones
         if (numeroP === 8) {
-            const hoy = new Date();
-            const dia  = String(hoy.getDate()).padStart(2, '0');
-            const mes  = String(hoy.getMonth() + 1).padStart(2, '0');
-            const anio = hoy.getFullYear();
-            const fechaDisplay = `${dia}/${mes}/${anio}`;
+            const { display: fechaDisplay } = this.getTodayBogota();
             await whatsappService.sendInteractiveButtons(
                 telefono,
                 `📅 ¿Cuándo ocurrió?\n\n¿Fue hoy, *${fechaDisplay}*?`,
@@ -432,14 +443,13 @@ class ConversationService {
             let fechaMysql = null;
 
             if (messageType === 'interactive' && interactiveId === 'btn_0') {
-                // "Sí, hoy" → tomar fecha del servidor
-                const hoy = new Date();
-                fechaMysql = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+                // "Sí, hoy" → tomar fecha del servidor en zona horaria Colombia
+                fechaMysql = this.getTodayBogota().mysql;
             } else if (messageType === 'interactive' && interactiveId === 'btn_1') {
                 // "Otra fecha" → pedir al usuario que escriba la fecha manualmente
                 await whatsappService.sendTextMessage(
                     telefono,
-                    '✏️ Escribe la fecha así:\n\n• *22/04/2026*\n• *22-04-2026*\n\n📅 ¿Cuándo ocurrió?'
+                    '✏️ Escribe la fecha así:\n\n• *1/01/2026*\n• *1-01-2026*\n\n📅 ¿Cuándo ocurrió?'
                 );
                 return; // estado se mantiene en pregunta_8
             } else {
@@ -448,7 +458,7 @@ class ConversationService {
                 if (!fechaMysql) {
                     await whatsappService.sendTextMessage(
                         telefono,
-                        '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *22/04/2026*\n• *22-04-2026*\n\n📅 ¿Cuándo ocurrió?'
+                        '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *1/01/2026*\n• *1-01-2026*\n\n📅 ¿Cuándo ocurrió?'
                     );
                     return;
                 }
@@ -889,14 +899,13 @@ class ConversationService {
             let fechaMysql = null;
 
             if (messageType === 'interactive' && interactiveId === 'btn_0') {
-                // "Sí, hoy" → tomar fecha del servidor
-                const hoy = new Date();
-                fechaMysql = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+                // "Sí, hoy" → tomar fecha del servidor en zona horaria Colombia
+                fechaMysql = this.getTodayBogota().mysql;
             } else if (messageType === 'interactive' && interactiveId === 'btn_1') {
                 // "Otra fecha" → pedir que escriba la fecha manualmente
                 await whatsappService.sendTextMessage(
                     telefono,
-                    '✏️ Escribe la nueva fecha así:\n\n• *22/04/2026*\n• *22-04-2026*\n\n📅 ¿Cuándo ocurrió?'
+                    '✏️ Escribe la nueva fecha así:\n\n• *1/01/2026*\n• *1-01-2026*\n\n📅 ¿Cuándo ocurrió?'
                 );
                 return; // estado se mantiene en corregir_8
             } else {
@@ -905,7 +914,7 @@ class ConversationService {
                 if (!fechaMysql) {
                     await whatsappService.sendTextMessage(
                         telefono,
-                        '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *22/04/2026*\n• *22-04-2026*\n\n📅 ¿Cuándo ocurrió?'
+                        '⚠️ No pude entender esa fecha. Por favor escríbela así:\n\n• *1/01/2026*\n• *1-01-2026*\n\n📅 ¿Cuándo ocurrió?'
                     );
                     return;
                 }
