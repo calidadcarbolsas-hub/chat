@@ -87,7 +87,7 @@ class ConversationService {
     async marcarReporteCompletado(reporteId) {
         const pool = getPool();
         await pool.execute(
-            `UPDATE reportes_nc SET estado = 'pendiente' WHERE id = ?`,
+            `UPDATE reportes_nc SET estado = 'pendiente_observacion' WHERE id = ?`,
             [reporteId]
         );
     }
